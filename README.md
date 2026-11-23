@@ -81,6 +81,13 @@ stutter, with a RAM frame cache for instant scrubbing. Export has a
   exports; your PC will be very busy. Falls back to single-core if a worker
   fails.
 
+GPU use is **vendor-agnostic**: HEVC decode uses whatever hardware path the
+system exposes (NVDEC / AMF / Quick Sync / D3D11VA / VideoToolbox) and falls
+back to software automatically; the export encoder is chosen by a quick
+**test-encode probe** that picks the first of NVENC / AMF / Quick Sync /
+VideoToolbox that actually runs on your machine, else CPU x264 — so it works on
+AMD, NVIDIA, Intel or Apple without configuration.
+
 Note: the overlay drawing itself is CPU (pygame/SDL) — the GPU does the HEVC
 decode and encode. "All cores" is what actually saturates the CPU. (ROCm/GPU
 compute doesn't apply to 2D UI drawing.)

@@ -931,6 +931,7 @@ class _SegmentDecoder:
     def __init__(self, path: str, use_hw: bool):
         self.path = path
         self.use_hw = use_hw
+        self._hw_disabled = False  # set if GPU decode opened but yielded nothing
         self.cap = None
         self.pos = -1          # index of the last decoded frame
         self.last = None       # last decoded frame (RGB), cached
@@ -938,7 +939,7 @@ class _SegmentDecoder:
     def _open(self):
         if self.cap is not None:
             self.cap.release()
-        params = _hw_accel_params() if self.use_hw else []
+        params = _hw_accel_params() if (self.use_hw and not self._hw_disabled) else []
         try:
             if params:
                 self.cap = cv2.VideoCapture(self.path, cv2.CAP_FFMPEG, params)
@@ -963,6 +964,18 @@ class _SegmentDecoder:
                 break  # past end of stream -> keep last good frame
             self.pos += 1
             frame = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        # Cross-GPU safety: if hardware decode opened but produced nothing on the
+        # very first attempt, disable it and retry once in software.
+        if (frame is None and self.use_hw and not self._hw_disabled
+                and self.pos < 0):
+            self._hw_disabled = True
+            self._open()
+            while self.pos < idx:
+                ok, bgr = self.cap.read()
+                if not ok:
+                    break
+                self.pos += 1
+                frame = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         self.last = frame
         return frame
 

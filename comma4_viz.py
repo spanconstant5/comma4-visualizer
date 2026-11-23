@@ -1596,23 +1596,43 @@ def _ffmpeg_exe():
 
 _GPU_ENCODER = None
 
-def gpu_encoder():
-    """Detect an available hardware H.264 encoder, or None for CPU (libx264).
+def _encoder_runs(enc):
+    """True if ffmpeg can actually encode one frame with `enc` on this machine.
 
-    Prefers AMD AMF (the user's Radeon), then NVENC, QSV, VideoToolbox.
+    Listing an encoder (ffmpeg -encoders) does NOT mean it works: a build lists
+    h264_nvenc even with no NVIDIA GPU. A tiny real encode is the only reliable
+    cross-vendor test, so this works correctly on AMD / NVIDIA / Intel / Apple.
+    """
+    import subprocess
+    cmd = [_ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
+           "-f", "lavfi", "-i", "color=c=black:s=128x128:r=5:d=1",
+           "-c:v", enc, "-frames:v", "3", "-f", "null", "-"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=25)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def gpu_encoder():
+    """Return a hardware H.264 encoder that actually works here, or None (CPU).
+
+    Probes each vendor encoder with a real 3-frame test encode and caches the
+    first that succeeds — so it auto-adapts to whatever GPU is present.
     """
     global _GPU_ENCODER
     if _GPU_ENCODER is not None:
         return _GPU_ENCODER or None
     import subprocess
     try:
-        out = subprocess.run([_ffmpeg_exe(), "-hide_banner", "-encoders"],
-                             capture_output=True, text=True, timeout=20).stdout
+        listed = subprocess.run([_ffmpeg_exe(), "-hide_banner", "-encoders"],
+                                capture_output=True, text=True, timeout=20).stdout
     except Exception:
         _GPU_ENCODER = ""
         return None
-    for enc in ("h264_amf", "h264_nvenc", "h264_qsv", "h264_videotoolbox"):
-        if enc in out:
+    # Order by prevalence; each is verified to actually run before being chosen.
+    for enc in ("h264_nvenc", "h264_amf", "h264_qsv", "h264_videotoolbox"):
+        if enc in listed and _encoder_runs(enc):
             _GPU_ENCODER = enc
             return enc
     _GPU_ENCODER = ""
