@@ -1,0 +1,15 @@
+# Build artifacts
+build/
+dist/
+*.spec.bak
+__pycache__/
+*.pyc
+
+# Packaging / output
+*.zip
+*.mp4
+*_comma4viz.mp4
+
+# OS / editor
+.DS_Store
+*.swp
